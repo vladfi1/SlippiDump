@@ -2,11 +2,20 @@ import hashlib
 import os
 import zlib
 
-from flask import Flask, render_template, request
-from werkzeug.utils import secure_filename
+from flask import Flask, request
 
 from simplekv.net.botostore import BotoStore
 import boto
+
+MB = 10 ** 6
+
+DEFAULTS = dict(
+  max_size_per_file=10 * MB,
+  max_files=100,
+)
+
+# controls where stuff is stored
+NAME = os.environ.get('NAME', 'test')
 
 def get_store() -> BotoStore:
   s3_creds = os.environ['S3_CREDS']
@@ -17,38 +26,69 @@ def get_store() -> BotoStore:
 
 store = get_store()
 
-from pymongo import MongoClient
+from pymongo import MongoClient, collation
 
-def get_db():
-  client = MongoClient(os.environ['MONGO_URI'])
-  return client.slp_replays.test
+client = MongoClient(os.environ['MONGO_URI'])
+db = client.slp_replays
+coll = db.get_collection(NAME)
 
-db = get_db()
+def get_params() -> dict:
+  params_coll = db.params
+  found = params_coll.find_one({'name': NAME})
+  if found is None:
+    params = dict(name=NAME, **DEFAULTS)
+    params_coll.insert_one(params)
+    return params
+  return found
 
-app = Flask(__name__)
+params = get_params()
+
+app = Flask(NAME)
+
+home_html = """
+<html>
+   <body>
+      <form action = "http://localhost:5000/upload_single" method = "POST" 
+         enctype = "multipart/form-data">
+         <input type = "file" name = "file" />
+         <input type = "submit"/>
+      </form>   
+   </body>
+</html>
+"""
 
 @app.route('/')
 def homepage():
-  return render_template('upload.html')
+  return home_html
 
 @app.route('/upload_single', methods = ['POST'])
 def upload_single():
+  max_files = params['max_files']
+  if coll.count_documents({}) >= max_files:
+    return f'DB full, already have {max_files} uploads.'
+
   f = request.files['file']
   file_bytes = f.read()
   f.close()
+
+  max_size = params['max_size_per_file']
+  if len(file_bytes) > max_size:
+    return f'Upload must be at most {max_size} bytes.'
 
   digest = hashlib.sha256()
   digest.update(file_bytes)
   key = digest.hexdigest()
 
-  found = db.find_one({'key': key})
+  found = coll.find_one({'key': key})
   if found is not None:
     return 'Duplicate file.'
+
+  # TODO: validate that file conforms to .slp spec
 
   compressed_bytes = zlib.compress(file_bytes)
   store.put('test.' + key, compressed_bytes)
 
-  db.insert_one(dict(
+  coll.insert_one(dict(
     key=key,
     name=f.filename,
     size=len(file_bytes),
