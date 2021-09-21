@@ -1,3 +1,4 @@
+import time
 import hashlib
 import os
 import zlib
@@ -46,12 +47,45 @@ def get_params(name: str) -> dict:
       found[k] = v
   return found
 
+class Timer:
+
+  def __init__(self, name: str):
+    self.name = name
+  
+  def __enter__(self):
+    self.start = time.perf_counter()
+  
+  def __exit__(self, *_):
+    self.duration = time.perf_counter() - self.start
+    print(f'{self.name}: {self.duration:.1f}')
+
 class ReplayDB:
 
   def __init__(self, name: str = NAME):
     self.name = name
     self.metadata = db.get_collection(name)
     self.params = get_params(name)
+
+  def current_db_size(self) -> int:
+    total_size = 0
+    for doc in self.metadata.find():
+      total_size += doc['stored_size']
+    return total_size
+
+  @property
+  def max_file_size(self):
+    return self.params['max_size_per_file']
+
+  @property
+  def min_file_size(self):
+    return self.params['min_size_per_file']
+
+  @property
+  def max_files(self):
+    return self.params['max_files']
+
+  def max_db_size(self):
+    return self.max_file_size * self.max_files
 
   def upload_slp(self, name: str, content: bytes) -> Optional[str]:
     # max_files = params['max_files']
@@ -81,12 +115,14 @@ class ReplayDB:
     compressed_bytes = zlib.compress(content)
     store.put(self.name + '.' + key, compressed_bytes)
 
-    # update mongo DB
+    # update DB
     self.metadata.insert_one(dict(
       key=key,
       name=name,
-      size=len(content),
-      compressed_size=len(compressed_bytes),
+      type='slp',
+      compressed=True,
+      original_size=len(content),
+      stored_size=len(compressed_bytes),
     ))
 
     return None
@@ -113,3 +149,47 @@ class ReplayDB:
     if errors:
       return '\n'.join(errors)
     return f'Successfully uploaded {len(names)} files.'
+
+  def upload_fast(self, uploaded, obj_type, key_method='name'):
+    name = uploaded.filename
+    with Timer('read'):
+      content = uploaded.read()
+      uploaded.close()
+
+    max_bytes_left = self.max_db_size() - self.current_db_size()
+    if len(content) + self.current_db_size() > self.max_db_size():
+      return f'{name}: exceeds {max_bytes_left} bytes'
+
+    if key_method == 'name':
+      key = name
+    elif key_method == 'content':
+      with Timer('sha256'):
+        digest = hashlib.sha256()
+        digest.update(content)
+        key = digest.hexdigest()
+    else:
+      raise ValueError(f'Invalid key_method {key_method}.')
+
+    found = self.metadata.find_one({'key': key})
+    if found is not None:
+      return f'{name}: duplicate upload'
+
+    with Timer('store.put'):
+      store.put(self.name + '.' + key, content)
+
+    # update DB
+    self.metadata.insert_one(dict(
+      name=name,
+      key=key,
+      type=obj_type,
+      stored_size=len(content),
+    ))
+    return f'{name}: upload successful'
+
+def nuke_replays(name: str):
+  db.drop_collection(name)
+  db.params.delete_many({'name': name})
+  keys = list(store.iter_keys(prefix=name + '.'))
+  for key in keys:
+    store.delete(key)
+  print(f'Deleted {len(keys)} replays.')

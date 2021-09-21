@@ -39,7 +39,8 @@ def upload_file():
     f.close()
     return error or f'{f.filename}: upload successful'
   elif f.filename.endswith('.zip'):
-    return replay_db.upload_zip(f)
+    # return replay_db.upload_zip(f)
+    return replay_db.upload_fast(f, obj_type='zip', key_method='content')
   else:
     return f'{f.filename}: must be a .slp or .zip'
 
