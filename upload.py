@@ -11,7 +11,7 @@ home_html = """
 <html>
   Upload a single slippi replay (.slp) or a zipped collection (.zip) of replays.
   <br/>
-  Currently have {num_mb} MB uploaded.
+  Currently have {num_mb} MB uploaded to database "{db}".
   <br/>
   <body>
     <form action = "http://localhost:5000/upload" method = "POST" 
@@ -27,6 +27,7 @@ home_html = """
 def homepage():
   return home_html.format(
     num_mb=replay_db.current_db_size() // upload_lib.MB,
+    db=upload_lib.NAME,
   )
 
 @app.route('/upload', methods = ['POST'])
@@ -48,4 +49,4 @@ def upload_file():
     return f'{f.filename}: must be a .slp or .zip'
 
 if __name__ == '__main__':
-  app.run(debug = True)
+  app.run(host='0.0.0.0', debug = True)

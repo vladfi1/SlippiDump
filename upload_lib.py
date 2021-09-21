@@ -14,6 +14,7 @@ DEFAULTS = dict(
   max_size_per_file=10 * MB,
   min_size_per_file=1 * MB,
   max_files=100,
+  max_total_size=250 * MB,
 )
 
 # controls where stuff is stored
@@ -85,7 +86,7 @@ class ReplayDB:
     return self.params['max_files']
 
   def max_db_size(self):
-    return self.max_file_size * self.max_files
+    return self.params['max_total_size']
 
   def upload_slp(self, name: str, content: bytes) -> Optional[str]:
     # max_files = params['max_files']
