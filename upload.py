@@ -2,15 +2,16 @@ import os
 
 from flask import app, Flask, request
 
-from upload_lib import NAME, ReplayDB
+import upload_lib
 
-replay_db = ReplayDB(NAME)
-
-app = Flask(NAME)
+replay_db = upload_lib.ReplayDB(upload_lib.NAME)
+app = Flask(upload_lib.NAME)
 
 home_html = """
 <html>
   Upload a single slippi replay (.slp) or a zipped collection (.zip) of replays.
+  <br/>
+  Currently have {num_mb} MB uploaded.
   <br/>
   <body>
     <form action = "http://localhost:5000/upload" method = "POST" 
@@ -24,7 +25,9 @@ home_html = """
 
 @app.route('/')
 def homepage():
-  return home_html
+  return home_html.format(
+    num_mb=replay_db.current_db_size() // upload_lib.MB,
+  )
 
 @app.route('/upload', methods = ['POST'])
 def upload_file():

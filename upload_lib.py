@@ -192,4 +192,4 @@ def nuke_replays(name: str):
   keys = list(store.iter_keys(prefix=name + '.'))
   for key in keys:
     store.delete(key)
-  print(f'Deleted {len(keys)} replays.')
+  print(f'Deleted {len(keys)} objects.')
