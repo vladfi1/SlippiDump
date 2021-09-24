@@ -159,12 +159,10 @@ class ReplayDB:
 
   def upload_fast(self, uploaded, obj_type, key_method='name'):
     name = uploaded.filename
-    with Timer('read'):
-      content = uploaded.read()
-      uploaded.close()
+    size = uploaded.content_length
 
     max_bytes_left = self.max_db_size() - self.current_db_size()
-    if len(content) + self.current_db_size() > self.max_db_size():
+    if size > max_bytes_left:
       return f'{name}: exceeds {max_bytes_left} bytes'
 
     if key_method == 'name':
@@ -182,14 +180,14 @@ class ReplayDB:
       return f'{name}: duplicate upload'
 
     with Timer('store.put'):
-      store.put(self.name + '.' + key, content)
+      store.put_file(self.name + '.' + key, uploaded.stream)
 
     # update DB
     self.metadata.insert_one(dict(
       name=name,
       key=key,
       type=obj_type,
-      stored_size=len(content),
+      stored_size=size,
     ))
     return f'{name}: upload successful'
 
