@@ -49,6 +49,11 @@ def get_params(name: str) -> dict:
       found[k] = v
   return found
 
+def write_params(name: str, **kwargs):
+  params = dict(name=name, **DEFAULTS)
+  params.update(kwargs)
+  db.params.insert_one(params)
+
 class Timer:
 
   def __init__(self, name: str):
