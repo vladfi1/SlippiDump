@@ -1,9 +1,10 @@
+from io import BytesIO
 import time
 import hashlib
 import os
 import zlib
 import zipfile
-from typing import Optional
+from typing import Iterator, Optional
 
 from simplekv.net.botostore import BotoStore
 import boto

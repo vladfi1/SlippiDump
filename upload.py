@@ -9,13 +9,12 @@ app = Flask(upload_lib.NAME)
 
 home_html = """
 <html>
-  Upload a single slippi replay (.slp) or a zipped collection (.zip) of replays.
+  Upload a single slippi replay (.slp) or a collection (.zip/.7z) of replays.
   <br/>
   Currently have {num_mb} MB uploaded to database "{db}".
   <br/>
   <body>
-    <form action = "http://localhost:5000/upload" method = "POST" 
-      enctype = "multipart/form-data">
+    <form action = "/upload" method = "POST" enctype = "multipart/form-data">
       <input type = "file" name = "file" />
       <input type = "submit"/>
     </form>
@@ -33,7 +32,8 @@ def homepage():
 @app.route('/upload', methods = ['POST'])
 def upload_file():
   f = request.files['file']
-  if f.filename.endswith('.slp'):
+  extension = f.filename.split('.')[-1]
+  if extension == 'slp':
     max_files = replay_db.params['max_files']
     num_uploaded = replay_db.metadata.count_documents({})
     if replay_db.metadata.count_documents({}) >= max_files:
@@ -42,11 +42,12 @@ def upload_file():
     error = replay_db.upload_slp(f.filename, f.read())
     f.close()
     return error or f'{f.filename}: upload successful'
-  elif f.filename.endswith('.zip'):
+  elif extension in ('zip', '7z'):
     # return replay_db.upload_zip(f)
-    return replay_db.upload_fast(f, obj_type='zip', key_method='content')
+    return replay_db.upload_fast(f, obj_type=extension, key_method='name')
   else:
     return f'{f.filename}: must be a .slp or .zip'
 
 if __name__ == '__main__':
-  app.run(host='0.0.0.0', debug = True)
+  # app.run(host='0.0.0.0', debug = True)
+  app.run(debug=True)
