@@ -208,10 +208,9 @@ class ReplayDB:
     ))
     return f'{name}: upload successful'
 
-def nuke_replays(name: str):
+def nuke_replays(name: str, stage='raw'):
   db.drop_collection(name)
-  db.params.delete_many({'name': name})
-  keys = list(store.iter_keys(prefix=name + '.'))
-  for key in keys:
-    store.delete(key)
+  db.params.delete_many({'name': name + '-' + stage})
+  keys = list(store.iter_keys(prefix=f'{name}/{stage}/'))
+  store.bucket.delete_keys(keys)
   print(f'Deleted {len(keys)} objects.')
