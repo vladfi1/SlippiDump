@@ -1,13 +1,13 @@
-from io import BytesIO
 import time
 import hashlib
 import os
 import zlib
 import zipfile
-from typing import Iterator, Optional
+from typing import Optional
 
-from simplekv.net.botostore import BotoStore
 import boto
+from simplekv.net.botostore import BotoStore
+import werkzeug.datastructures
 
 MB = 10 ** 6
 
@@ -157,9 +157,16 @@ class ReplayDB:
       return '\n'.join(errors)
     return f'Successfully uploaded {len(names)} files.'
 
-  def upload_fast(self, uploaded, obj_type, key_method='name'):
+  def upload_fast(
+    self,
+    uploaded: werkzeug.datastructures.FileStorage,
+    obj_type: str,
+    key_method: str = 'name',
+  ):
     name = uploaded.filename
-    size = uploaded.content_length
+    f = uploaded.stream
+    size = f.seek(0, 2)
+    f.seek(0)
 
     max_bytes_left = self.max_db_size() - self.current_db_size()
     if size > max_bytes_left:
@@ -167,25 +174,26 @@ class ReplayDB:
 
     if key_method == 'name':
       key = name
-    elif key_method == 'content':
+    elif key_method == 'sha256':
       with Timer('sha256'):
         digest = hashlib.sha256()
-        digest.update(content)
+        digest.update(f)
         key = digest.hexdigest()
     else:
       raise ValueError(f'Invalid key_method {key_method}.')
 
     found = self.metadata.find_one({'key': key})
     if found is not None:
-      return f'{name}: duplicate upload'
+      return f'{name}: object with {key_method} {key} already uploaded'
 
     with Timer('store.put'):
-      store.put_file(self.name + '.' + key, uploaded.stream)
+      store.put_file(self.name + '.' + key, f)
 
     # update DB
     self.metadata.insert_one(dict(
       name=name,
       key=key,
+      key_method=key_method,
       type=obj_type,
       stored_size=size,
     ))

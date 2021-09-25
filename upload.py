@@ -44,10 +44,10 @@ def upload_file():
     return error or f'{f.filename}: upload successful'
   elif extension in ('zip', '7z'):
     # return replay_db.upload_zip(f)
-    return replay_db.upload_fast(f, obj_type=extension, key_method='name')
+    return replay_db.upload_fast(f, obj_type=extension, key_method='sha256')
   else:
-    return f'{f.filename}: must be a .slp or .zip'
+    return f'{f.filename}: must be a .slp, .zip, or .7z'
 
 if __name__ == '__main__':
-  # app.run(host='0.0.0.0', debug = True)
-  app.run(debug=True)
+  # app.run(host='0.0.0.0', debug=False)
+  app.run(debug=False)
