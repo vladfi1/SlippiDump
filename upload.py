@@ -15,8 +15,9 @@ home_html = """
   <br/>
   <body>
     <form action = "/upload" method = "POST" enctype = "multipart/form-data">
-      <input type = "file" name = "file" />
-      <input type = "submit"/>
+      <p><input type = "file" name = "file" /></p>
+      <p>Description: <input type = "text" name = "description" /></p>
+      <p><input type = "submit"/></p>
     </form>
   </body>
 </html>
@@ -38,7 +39,8 @@ def upload_file():
   extension = f.filename.split('.')[-1]
   if extension in RAW_EXTENSIONS:
     # return replay_db.upload_zip(f)
-    return replay_db.upload_raw(f, obj_type=extension)
+    return replay_db.upload_raw(
+      f, obj_type=extension, description=request.form['description'])
   else:
     return f'{f.filename}: must be in {RAW_EXTENSIONS}'
 

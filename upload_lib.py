@@ -171,6 +171,7 @@ class ReplayDB:
     self,
     uploaded: werkzeug.datastructures.FileStorage,
     obj_type: str,
+    description: str,
     hash_method: str = 'md5',
   ):
     name = uploaded.filename
@@ -201,6 +202,7 @@ class ReplayDB:
         key=key,
         hash_method=hash_method,
         type=obj_type,
+        description=description,
         stored_size=size,
         processed=False,
     ))
