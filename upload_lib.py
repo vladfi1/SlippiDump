@@ -49,7 +49,8 @@ def get_params(name: str) -> dict:
       found[k] = v
   return found
 
-def write_params(name: str, **kwargs):
+def create_params(name: str, **kwargs):
+  assert db.params.find_one({'name': name}) is None
   params = dict(name=name, **DEFAULTS)
   params.update(kwargs)
   db.params.insert_one(params)
@@ -66,16 +67,25 @@ class Timer:
     self.duration = time.perf_counter() - self.start
     print(f'{self.name}: {self.duration:.1f}')
 
+def iter_bytes(f, chunk_size=2 ** 16):
+  while True:
+    chunk = f.read(chunk_size)
+    if chunk:
+      yield chunk
+    else:
+      break
+  f.seek(0)
+
 class ReplayDB:
 
   def __init__(self, name: str = NAME):
     self.name = name
-    self.metadata = db.get_collection(name)
     self.params = get_params(name)
+    self.raw = db.get_collection(name + '-raw')
 
-  def current_db_size(self) -> int:
+  def raw_size(self) -> int:
     total_size = 0
-    for doc in self.metadata.find():
+    for doc in self.raw.find():
       total_size += doc['stored_size']
     return total_size
 
@@ -112,7 +122,7 @@ class ReplayDB:
     digest.update(content)
     key = digest.hexdigest()
 
-    found = self.metadata.find_one({'key': key})
+    found = self.raw.find_one({'key': key})
     if found is not None:
       return f'{name}: duplicate file'
 
@@ -123,7 +133,7 @@ class ReplayDB:
     store.put(self.name + '.' + key, compressed_bytes)
 
     # update DB
-    self.metadata.insert_one(dict(
+    self.raw.insert_one(dict(
       key=key,
       name=name,
       type='slp',
@@ -142,7 +152,7 @@ class ReplayDB:
       print(names)
 
       max_files = self.params['max_files']
-      num_uploaded = self.metadata.count_documents({})
+      num_uploaded = self.raw.count_documents({})
       if num_uploaded + len(names) > max_files:
         return f'Can\'t upload {len(names)} files, would exceed limit of {max_files}.'
 
@@ -157,45 +167,42 @@ class ReplayDB:
       return '\n'.join(errors)
     return f'Successfully uploaded {len(names)} files.'
 
-  def upload_fast(
+  def upload_raw(
     self,
     uploaded: werkzeug.datastructures.FileStorage,
     obj_type: str,
-    key_method: str = 'name',
+    hash_method: str = 'md5',
   ):
     name = uploaded.filename
     f = uploaded.stream
     size = f.seek(0, 2)
     f.seek(0)
 
-    max_bytes_left = self.max_db_size() - self.current_db_size()
+    max_bytes_left = self.max_db_size() - self.raw_size()
     if size > max_bytes_left:
       return f'{name}: exceeds {max_bytes_left} bytes'
 
-    if key_method == 'name':
-      key = name
-    elif key_method == 'sha256':
-      with Timer('sha256'):
-        digest = hashlib.sha256()
-        digest.update(f)
-        key = digest.hexdigest()
-    else:
-      raise ValueError(f'Invalid key_method {key_method}.')
+    with Timer('md5'):
+      digest = getattr(hashlib, hash_method)()
+      for chunk in iter_bytes(f):
+        digest.update(chunk)
+      key = digest.hexdigest()
 
-    found = self.metadata.find_one({'key': key})
+    found = self.raw.find_one({'key': key})
     if found is not None:
-      return f'{name}: object with {key_method} {key} already uploaded'
+      return f'{name}: object with {hash_method}={key} already uploaded'
 
     with Timer('store.put'):
-      store.put_file(self.name + '.' + key, f)
+      store.put_file(self.name + '/raw/' + key, f)
 
     # update DB
-    self.metadata.insert_one(dict(
-      name=name,
-      key=key,
-      key_method=key_method,
-      type=obj_type,
-      stored_size=size,
+    self.raw.insert_one(dict(
+        filename=name,
+        key=key,
+        hash_method=hash_method,
+        type=obj_type,
+        stored_size=size,
+        processed=False,
     ))
     return f'{name}: upload successful'
 

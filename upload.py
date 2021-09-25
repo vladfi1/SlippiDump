@@ -9,7 +9,7 @@ app = Flask(upload_lib.NAME)
 
 home_html = """
 <html>
-  Upload a single slippi replay (.slp) or a collection (.zip/.7z) of replays.
+  Upload a collection ({extensions}) of replays.
   <br/>
   Currently have {num_mb} MB uploaded to database "{db}".
   <br/>
@@ -22,10 +22,13 @@ home_html = """
 </html>
 """
 
+RAW_EXTENSIONS = ('zip', '7z')
+
 @app.route('/')
 def homepage():
   return home_html.format(
-    num_mb=replay_db.current_db_size() // upload_lib.MB,
+    extensions='/'.join(RAW_EXTENSIONS),
+    num_mb=replay_db.raw_size() // upload_lib.MB,
     db=upload_lib.NAME,
   )
 
@@ -33,20 +36,11 @@ def homepage():
 def upload_file():
   f = request.files['file']
   extension = f.filename.split('.')[-1]
-  if extension == 'slp':
-    max_files = replay_db.params['max_files']
-    num_uploaded = replay_db.metadata.count_documents({})
-    if replay_db.metadata.count_documents({}) >= max_files:
-      return f'DB full, already have {num_uploaded} uploads.'
-
-    error = replay_db.upload_slp(f.filename, f.read())
-    f.close()
-    return error or f'{f.filename}: upload successful'
-  elif extension in ('zip', '7z'):
+  if extension in RAW_EXTENSIONS:
     # return replay_db.upload_zip(f)
-    return replay_db.upload_fast(f, obj_type=extension, key_method='sha256')
+    return replay_db.upload_raw(f, obj_type=extension)
   else:
-    return f'{f.filename}: must be a .slp, .zip, or .7z'
+    return f'{f.filename}: must be in {RAW_EXTENSIONS}'
 
 if __name__ == '__main__':
   # app.run(host='0.0.0.0', debug=False)
