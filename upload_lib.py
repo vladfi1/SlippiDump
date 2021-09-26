@@ -1,12 +1,13 @@
 import time
 import hashlib
+import base64
 import os
 import zlib
 import zipfile
 from typing import Optional
 
-import boto
-from simplekv.net.botostore import BotoStore
+import boto3
+from simplekv.net.boto3store import Boto3Store
 import werkzeug.datastructures
 
 MB = 10 ** 6
@@ -21,12 +22,13 @@ DEFAULTS = dict(
 # controls where stuff is stored
 NAME = os.environ.get('NAME', 'test')
 
-def get_store() -> BotoStore:
+def get_store() -> Boto3Store:
   s3_creds = os.environ['S3_CREDS']
   access_key, secret_key = s3_creds.split(':')
-  con = boto.connect_s3(access_key, secret_key)
-  bucket = con.get_bucket('slp-replays')
-  return BotoStore(bucket)
+  session = boto3.Session(access_key, secret_key)
+  s3 = session.resource('s3')
+  bucket = s3.Bucket('slippi-data')
+  return Boto3Store(bucket)
 
 store = get_store()
 
@@ -172,7 +174,6 @@ class ReplayDB:
     uploaded: werkzeug.datastructures.FileStorage,
     obj_type: str,
     description: str,
-    hash_method: str = 'md5',
   ):
     name = uploaded.filename
     f = uploaded.stream
@@ -184,23 +185,29 @@ class ReplayDB:
       return f'{name}: exceeds {max_bytes_left} bytes'
 
     with Timer('md5'):
-      digest = getattr(hashlib, hash_method)()
+      digest = hashlib.md5()
       for chunk in iter_bytes(f):
         digest.update(chunk)
       key = digest.hexdigest()
 
     found = self.raw.find_one({'key': key})
     if found is not None:
-      return f'{name}: object with {hash_method}={key} already uploaded'
+      return f'{name}: object with md5={key} already uploaded'
 
     with Timer('store.put'):
+      store.bucket.upload_fileobj(
+          Fileobj=f,
+          Key=self.name + '/raw/' + key,
+          # ContentLength=size,
+          # ContentMD5=str(base64.encodebytes(digest.digest())),
+      )
       store.put_file(self.name + '/raw/' + key, f)
 
     # update DB
     self.raw.insert_one(dict(
         filename=name,
         key=key,
-        hash_method=hash_method,
+        hash_method="md5",
         type=obj_type,
         description=description,
         stored_size=size,

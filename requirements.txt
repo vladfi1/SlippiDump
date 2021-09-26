@@ -1,4 +1,4 @@
 flask
-boto
-simplekv
+boto3
+git+https://github.com/mbr/simplekv.git
 pymongo[srv]
