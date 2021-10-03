@@ -201,7 +201,7 @@ class ReplayDB:
           # ContentLength=size,
           # ContentMD5=str(base64.encodebytes(digest.digest())),
       )
-      store.put_file(self.name + '/raw/' + key, f)
+      # store.put_file(self.name + '/raw/' + key, f)
 
     # update DB
     self.raw.insert_one(dict(
@@ -214,6 +214,12 @@ class ReplayDB:
         processed=False,
     ))
     return f'{name}: upload successful'
+
+  def delete(self, key: str):
+    s3_key = self.name + '/raw/' + key
+    store.bucket.delete_objects(Delete=dict(Objects=[dict(Key=s3_key)]))
+    # store.delete()
+    self.raw.delete_one({'key': key})
 
 def nuke_replays(name: str, stage='raw'):
   db.drop_collection(name)
